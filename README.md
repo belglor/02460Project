@@ -46,9 +46,52 @@ A branch is not available to others unless you push the branch to your remote re
 First we create a new branch
 
 ```
-$ git branch BRANCH_NAME    # Create a new branch
-$ git checkout BRANCH_NAME  # Then switch to the new branch
+$ git branch <branch_name>    # Create a new branch
+$ git checkout <branch_name>  # Then switch to the new branch
 ```
+
+Normaly, you should keep your branch locally, but if it should happen, that you need help, then you can push your branch
+
+```
+$ git push -u origin <branch>
+```
+
+You can see all branches
+
+```
+$ git branch -a
+```
+
+where the `-a` shows all local and remote branches
+
+### Updating branches
+
+To update your branch from the `master branch`
+
+```
+$ git checkout <your_branch>
+$ git merge origin/master
+$ git push origin <your_branch>
+```
+
+**More about this here** [Link to branching](https://git-scm.com/book/en/v2/Git-Branching-Basic-Branching-and-Merging)
+
+
+
+### Delete an unneeded branch
+
+**Remember to merge your branch before deleting**
+
+```
+$ git clone git://git.kernel.org/.../git.git my.git
+$ cd my.git
+$ git branch -d -r origin/todo origin/html origin/man   (1)
+$ git branch -D test                                    (2)
+```
+
+(1) Delete the remote-tracking branches "todo", "html" and "man". The next fetch or pull will create them again unless you configure them not to. See git-fetch[1].
+
+(2) Delete the "test" branch even if the "master" branch (or whichever branch is currently checked out) does not have all commits from the test branch.
 
 ## Git status and diff
 
