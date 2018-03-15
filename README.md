@@ -1,7 +1,7 @@
 # 02460 Project
 Advanced Machine Learning project
 
-By <Member name 1>, <Member name 2>, <Member name 3> and <Mirza Hasanbasic>
+By <Member name 1>, <Member name 2>, <Member name 3> and Mirza Hasanbasic
 
 Table of Contents
 =================
