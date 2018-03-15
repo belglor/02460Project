@@ -1,7 +1,7 @@
 # 02460 Project
 Advanced Machine Learning project
 
-# README
+By <Member name 1>, <Member name 2>, <Member name 3> and <Mirza Hasanbasic>
 
 Table of Contents
 =================
@@ -9,7 +9,13 @@ Table of Contents
 * [About this project](https://github.com/kazyka/02460Project#About-this-project)
     * [How to use](https://github.com/kazyka/02460Project#How-to-use)
 * [How to use git](https://github.com/kazyka/02460Project#how-to-use-git)
-    *
+    * [Before you start](https://github.com/kazyka/02460Project#before-you-start)
+    * [Branching](https://github.com/kazyka/02460Project#)
+    * [Git status and diff](https://github.com/kazyka/02460Project#Git-status-and-diff)
+    * [Update and merge](https://github.com/kazyka/02460Project#Update-and-merge)
+    * [Replace local changes](https://github.com/kazyka/02460Project#replace-local-changes)
+    * [Commiting and pushing](https://github.com/kazyka/02460Project#commiting-and-pushing)
+* [Python requirement](https://github.com/kazyka/02460Project#python-requirementtxt)
 
 
 For Markdown [Click here](https://github.com/adam-p/markdown-here/wiki/Markdown-Cheatsheet)
