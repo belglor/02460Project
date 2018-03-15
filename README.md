@@ -3,6 +3,15 @@ Advanced Machine Learning project
 
 # README
 
+Table of Contents
+=================
+
+* [About this project](https://github.com/kazyka/02460Project#About-this-project)
+    * [How to use](https://github.com/kazyka/02460Project#How-to-use)
+* [How to use git](https://github.com/kazyka/02460Project#how-to-use-git)
+    *
+
+
 For Markdown [Click here](https://github.com/adam-p/markdown-here/wiki/Markdown-Cheatsheet)
 
 # About this project
