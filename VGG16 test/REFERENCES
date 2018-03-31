@@ -1,0 +1,9 @@
+PURE TENSORFLOW IMPLEMENTATION:
+Original page: http://www.cs.toronto.edu/~frossard/post/vgg16/
+There you can find instructions plus links to original code and pretrained weights
+Weights: https://www.cs.toronto.edu/~frossard/vgg16/vgg16_weights.npz
+Class labels: https://www.cs.toronto.edu/~frossard/vgg16/imagenet_classes.py
+
+KERAS IMPLEMENTATION:
+Original page: https://gist.github.com/baraldilorenzo/07d7802847aaad0a35d3
+Weights: https://drive.google.com/file/d/0Bz7KyqmuGsilT0J5dmRCM0ROVHc/view

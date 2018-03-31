@@ -253,7 +253,7 @@ class vgg16:
             sess.run(self.parameters[i].assign(weights[k]))
 
 if __name__ == '__main__':
-    sess = tf.Session()
+    sess = tf.Session(config=tf.ConfigProto(log_device_placement=True))
     imgs = tf.placeholder(tf.float32, [None, 224, 224, 3])
     vgg = vgg16(imgs, 'vgg16_weights.npz', sess)
     
