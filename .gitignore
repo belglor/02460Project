@@ -101,5 +101,9 @@ ENV/
 .mypy_cache/
 
 # ignore pretrained weights
+*.npz
+*.h5
+
 .h5
+*.npz
 .npz
