@@ -226,7 +226,7 @@ class fvcnn:
         return np.float32(em.getMeans()), \
         		np.float32(em.getCovs()), np.float32(em.getWeights())
 
-    def likelihood_moment(x, ytk, moment):	
+    def likelihood_moment(self, x, ytk, moment):	
         	x_moment = np.power(np.float32(x), moment) if moment > 0 else np.float32([1])
         	return x_moment * ytk
     
@@ -234,14 +234,14 @@ class fvcnn:
         	gaussians, s0, s1,s2 = {}, {}, {}, {}
         	samples = zip(range(0, len(samples)), samples)
         	
-        	g = [multivariate_normal(mean=means[k], cov=covs[k]) for k in range(0, len(weights)) ]
+        	g = [multivariate_normal(mean=means[k], cov=covs[k]) for k in range(0, weights.size) ]
         	for index, x in samples:
         		gaussians[index] = np.array([g_k.pdf(x) for g_k in g])
         
-        	for k in range(0, len(weights)):
+        	for k in range(0, weights.size):
         		s0[k], s1[k], s2[k] = 0, 0, 0
         		for index, x in samples:
-        			probabilities = np.multiply(gaussians[index], weights)
+        			probabilities = np.multiply(gaussians[index], weights.T)
         			probabilities = probabilities / np.sum(probabilities)
         			s0[k] = s0[k] + self.likelihood_moment(x, probabilities[k], 0)
         			s1[k] = s1[k] + self.likelihood_moment(x, probabilities[k], 1)
@@ -249,16 +249,16 @@ class fvcnn:
     
         	return s0, s1, s2
     
-    def fisher_vector_weights(s0, s1, s2, means, covs, w, T):
+    def fisher_vector_weights(self, s0, s1, s2, means, covs, w, T):
         	return np.float32([((s0[k] - T * w[k]) / np.sqrt(w[k]) ) for k in range(0, len(w))])
     
-    def fisher_vector_means(s0, s1, s2, means, sigma, w, T):
+    def fisher_vector_means(self, s0, s1, s2, means, sigma, w, T):
         	return np.float32([(s1[k] - means[k] * s0[k]) / (np.sqrt(w[k] * sigma[k])) for k in range(0, len(w))])
     
-    def fisher_vector_sigma(s0, s1, s2, means, sigma, w, T):
+    def fisher_vector_sigma(self, s0, s1, s2, means, sigma, w, T):
         	return np.float32([(s2[k] - 2 * means[k]*s1[k]  + (means[k]*means[k] - sigma[k]) * s0[k]) / (np.sqrt(2*w[k])*sigma[k])  for k in range(0, len(w))])
     
-    def normalize(fisher_vector):
+    def normalize(self, fisher_vector):
         	v = np.sqrt(abs(fisher_vector)) * np.sign(fisher_vector)
         	return v / np.sqrt(np.dot(v, v))
 
@@ -273,15 +273,19 @@ class fvcnn:
         fv = self.normalize(fv)
         return fv
         
-        
-    def forward_propagate(self, img, sess):
+    
+    def forward_propagate(self, imgs, sess):
         # Propagate images through CNN: extract descriptors
-        descripts = np.concatenate(sess.run(self.descripts, feed_dict={self.imgs: [img]}))
-        
+        mat_descripts = sess.run(self.descripts, feed_dict={self.imgs: imgs})
+        #Concatenate descriptors to have (7*7)x(512*N_images) 
+        descripts = mat_descripts[0,:,:,:]
+        for i in range(mat_descripts.shape[0]-1):
+            descripts = np.concatenate((descripts, mat_descripts[i+1,:,:,:]), axis=2)
+        descripts = np.concatenate(descripts)
         #Cluster with GMM: use EM and return components means, covs and weights
         #Number of GMM components
-        N = 1
-        means, covs, weights = self.generate_GMM(descripts, N) #NB THERE HAS TO BE SOME FORM OF RESHAPING/CONCATENATION
+        N = 64
+        means, covs, weights = self.generate_GMM(descripts.T, N) #NB THERE HAS TO BE SOME FORM OF RESHAPING/CONCATENATION
         #Throw away gaussians with weights that are too small:
 #        th = 1.0 / N
 #        means = np.float32([m for k,m in zip(range(0, len(weights)), means) if weights[k] > th])
@@ -289,7 +293,10 @@ class fvcnn:
 #        weights = np.float32([m for k,m in zip(range(0, len(weights)), weights) if weights[k] > th])
 
         #Compute FV
-        fv = self.fisher_vector(descripts, means, covs, weights)
+        fv = []
+        for i in range(mat_descripts.shape[0]):
+            fishvec = self.fisher_vector(np.concatenate(mat_descripts[i,:,:,:]), means, covs, weights)
+            fv.append(fishvec)
         return fv
         #Classify with SVM
     
@@ -301,6 +308,12 @@ network = fvcnn(imgs, 'vgg16_weights.npz', sess)
 
 img1 = imread('cat.jpeg', mode='RGB')
 img1 = imresize(img1, (224, 224))
+img2 = imread('laska.png', mode='RGB')
+img2 = imresize(img1, (224, 224))
 
-fv_test = network.forward_propagate(img1, sess)
+imgs = np.zeros([2, 224, 224, 3])
+imgs[0,:,:,:] = img1
+imgs[1,:,:,:] = img2
+
+fv_test = network.forward_propagate(imgs, sess)
 sess.close()
