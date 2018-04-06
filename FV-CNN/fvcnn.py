@@ -1,11 +1,9 @@
 ########################################################################################
-# Davi Frossard, 2016                                                                  #
-# VGG16 implementation in TensorFlow                                                   #
-# Details:                                                                             #
-# http://www.cs.toronto.edu/~frossard/post/vgg16/                                      #
-#                                                                                      #
-# Model from https://gist.github.com/ksimonyan/211839e770f7b538e2d8#file-readme-md     #
-# Weights from Caffe converted using https://github.com/ethereon/caffe-tensorflow      #
+# VGG16 implementation in TensorFlow taken and adapted from http://www.cs.toronto.edu/~frossard/post/vgg16/                                                  
+# Copyright Davi Frossard, 2016                                                                            
+#                                     
+# Fisher Vector implementation taken and adapted from https://github.com/jacobgil/pyfishervector                                                                                
+#
 ########################################################################################
 
 import tensorflow as tf
@@ -14,14 +12,38 @@ from scipy.misc import imread, imresize
 import cv2
 from scipy.stats import multivariate_normal
 
+# FVCNN class builder
+# When called, the class uses tf layers to build a VGG16 CNN network (note that only the 
+# convolutional layers are built). The class contains methods to compute the corresponding
+# Fisher Vector from the output of the CNN layer
+
+# TO DO:
+#   - Separate training and predicting: need to differentiate between a training loop carried
+#     out on a dataset and a simple forward pass and prediction of an image (SO GMM IS 
+#     TRAINED ONLY IN THE TRAINING LOOP, then it stays fixed for prediction)
+#   - Implement SVM classification on the FVs
+#   - Implement crisp region proposal for segmentation
+# 
+# TO FIX:
+#   - Is GMM carried out properly? Are things correctly concatenated? 
+#   - Is GMM working properly? Probability assignment looks weird (same probability assignment to all points?)
+#   - Are FV working properly?
+#
+#
+
+
+
+
 class fvcnn:
+    # Class builder
     def __init__(self, imgs, weights=None, sess=None):
         self.imgs = imgs
         self.convlayers()
         self.descripts = self.pool5;
         if weights is not None and sess is not None:
             self.load_weights(weights, sess)
-
+            
+    # Convolutional layer builder
     def convlayers(self):
         self.parameters = []
 
@@ -208,7 +230,7 @@ class fvcnn:
                                padding='SAME',
                                name='pool4')
 
-    
+    # Pre-trained VGG16 weights loader
     def load_weights(self, weight_file, sess):
         weights = np.load(weight_file)
         keys = sorted(weights.keys())
@@ -218,6 +240,7 @@ class fvcnn:
             print( i, k, np.shape(weights[k]))
             sess.run(self.parameters[i].assign(weights[k]))
     
+    # Fit a GMM to descriptors (HOW ARE DESCRIPTORS FED?)
     def generate_GMM(self, descriptors, N):
         words = np.concatenate(descriptors)
         em = cv2.ml.EM_create()
@@ -225,11 +248,14 @@ class fvcnn:
         em.trainEM(words)
         return np.float32(em.getMeans()), \
         		np.float32(em.getCovs()), np.float32(em.getWeights())
-
+                
+    # Compute moments of gaussian distribution 
     def likelihood_moment(self, x, ytk, moment):	
         	x_moment = np.power(np.float32(x), moment) if moment > 0 else np.float32([1])
         	return x_moment * ytk
     
+    # Given a GMM model (given by means, covs and mixture weights) and samples, compute
+    # the samples statistics wro the given GMM
     def likelihood_statistics(self, samples, means, covs, weights):
         	gaussians, s0, s1,s2 = {}, {}, {}, {}
         	samples = zip(range(0, len(samples)), samples)
@@ -261,7 +287,8 @@ class fvcnn:
     def normalize(self, fisher_vector):
         	v = np.sqrt(abs(fisher_vector)) * np.sign(fisher_vector)
         	return v / np.sqrt(np.dot(v, v))
-
+    
+    # Compute a sample's Fisher Vector
     def fisher_vector(self, samples, means, covs, weights):
         s0, s1, s2 =  self.likelihood_statistics(samples, means, covs, weights)
         T = samples.shape[0]
@@ -273,20 +300,30 @@ class fvcnn:
         fv = self.normalize(fv)
         return fv
         
+    # Propagate an image through the model:
+    # THIS HAS TO BE MODIFIED TO TAKE INTO ACCOUNT TRAINING OR JUST PREDICTING
+    # When training, a GMM should be fitted to he given data (passed as stacked up images)
+    # When predicting, this is not necessary and the image is just propagated through the
+    # CNN , the first and second order statistic is calculated wro the fitted GMM and then
+    # classification through SVM is performed
     
+    # The method takes a collection of images with dimension [N_pics, 224, 224, 3] and the
+    # current tf session as input. The images are propagated through the convolutional layers
+    # of the pre treained VGG16. Then, the corresponding FV are extracted. Finally, the FV
+    # are classified through a SVM
     def forward_propagate(self, imgs, sess):
         # Propagate images through CNN: extract descriptors
         mat_descripts = sess.run(self.descripts, feed_dict={self.imgs: imgs})
-        #Concatenate descriptors to have (7*7)x(512*N_images) 
+        #Concatenate descriptors to have (7*7)x(512*N_images) BUT IS THIS CORRECT
         descripts = mat_descripts[0,:,:,:]
         for i in range(mat_descripts.shape[0]-1):
             descripts = np.concatenate((descripts, mat_descripts[i+1,:,:,:]), axis=2)
         descripts = np.concatenate(descripts)
         #Cluster with GMM: use EM and return components means, covs and weights
         #Number of GMM components
-        N = 64
+        N = 64 
         means, covs, weights = self.generate_GMM(descripts.T, N) #NB THERE HAS TO BE SOME FORM OF RESHAPING/CONCATENATION
-        #Throw away gaussians with weights that are too small:
+        #Throw away gaussians with weights that are too small: TO FIX
 #        th = 1.0 / N
 #        means = np.float32([m for k,m in zip(range(0, len(weights)), means) if weights[k] > th])
 #        covs = np.float32([m for k,m in zip(range(0, len(weights)), covs) if weights[k] > th])
@@ -301,19 +338,60 @@ class fvcnn:
         #Classify with SVM
     
 #%%
-        
+
+#Opening TF session and building the net        
 sess = tf.Session()
 imgs = tf.placeholder(tf.float32, [None, 224, 224, 3])
 network = fvcnn(imgs, 'vgg16_weights.npz', sess)
 
+#Reading images
 img1 = imread('cat.jpeg', mode='RGB')
 img1 = imresize(img1, (224, 224))
 img2 = imread('laska.png', mode='RGB')
 img2 = imresize(img1, (224, 224))
 
+#Concatenating images to feed 
 imgs = np.zeros([2, 224, 224, 3])
 imgs[0,:,:,:] = img1
 imgs[1,:,:,:] = img2
 
-fv_test = network.forward_propagate(imgs, sess)
+# #Uncomment for direct feedforward
+#fv_test = network.forward_propagate(imgs, sess)
+
+#Uncomment for debug feedforward (single call to all methods and variable storing)
+
+#Propagating imgs through CNN. Getting matrix of image descriptors [N_images,7,7,512]
+mat_descripts = sess.run(network.descripts, feed_dict={network.imgs: imgs})
+
+#Concatenate descriptors to have (7*7)x(512*N_images) BUT IS THIS CORRECT
+descripts = mat_descripts[0,:,:,:]
+for i in range(mat_descripts.shape[0]-1):
+    descripts = np.concatenate((descripts, mat_descripts[i+1,:,:,:]), axis=2)
+descripts = np.concatenate(descripts)
+
+#Cluster with GMM: use EM and return components means, covs and weights
+#Number of GMM components
+N = 64 
+means, covs, weights = network.generate_GMM(descripts.T, N) #NB THERE HAS TO BE SOME FORM OF RESHAPING/CONCATENATION
+
+#Compute FV
+fv = []
+for i in range(mat_descripts.shape[0]):
+    #FV procedure (unrolled for debugging)
+    samples = np.concatenate(mat_descripts[i,:,:,:])
+    # SHOULD BE FURTHER UNROLLED: LOOK AT THE GENERAL METHOD DESCRIPTIONS IN THE fvcnn CLASS
+    s0, s1, s2 =  network.likelihood_statistics(samples, means, covs, weights)
+    T = samples.shape[0]
+    covs = np.float32([np.diagonal(covs[k]) for k in range(0, covs.shape[0])])
+    a = network.fisher_vector_weights(s0, s1, s2, means, covs, weights, T)
+    b = network.fisher_vector_means(s0, s1, s2, means, covs, weights, T)
+    c = network.fisher_vector_sigma(s0, s1, s2, means, covs, weights, T)
+    fishvec = np.concatenate([np.concatenate(a), np.concatenate(b), np.concatenate(c)])
+    fishvec = network.normalize(fishvec)
+    fishvec = network.fisher_vector(np.concatenate(mat_descripts[i,:,:,:]), means, covs, weights)
+    fv.append(fishvec)
+
+# Close tf session
 sess.close()
+
+
