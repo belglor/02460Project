@@ -100,10 +100,10 @@ ENV/
 # mypy
 .mypy_cache/
 
-# ignore pretrained weights
+# ignore pretrained weights and pictures
 *.npz
 *.h5
+*.jpeg
+*.jpg
 
-.h5
-*.npz
-.npz
+
