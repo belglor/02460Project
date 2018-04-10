@@ -362,10 +362,10 @@ network = fvcnn(imgs, 'vgg16_weights.npz', sess)
 folder = "./dtd/images/*/"
 extns = "*.jpg"
 files = glob.glob(folder+extns)
-batch_size = 100 
-batch_to_load = len(files)//batch_size
+batch_size = 5
+batch_to_load = 1 # Use len(files)//batch_size for whole dataset
 feed_imgs = np.zeros([batch_size, 224, 224, 3])
-
+loaded_tracker = [] #tracker to not random sample same pic twice
 print('Dividing the data in ' + str(batch_to_load) + ' batches of size ' + str(batch_size) + ':')
 #Propagate through CNN in batches
 for i in range(batch_to_load): 
@@ -373,13 +373,20 @@ for i in range(batch_to_load):
     sys.stdout.flush() 
     #Stacking the next batch together
     for j in range(batch_size):
-        index = j + i*batch_size
+        #If not using the dataset, take random pics
+        if(batch_to_load != len(files)//batch_size):
+            index = np.random.randint(0, len(files)) 
+            while(index in loaded_tracker): #check if duplicated entry
+                index = np.random.randint(0, len(files)) 
+            loaded_tracker.append(index) #track loaded pics
+        else:
+            index = j + i*batch_size
         #Check index to prevent out-of-bounds
         if(index>=len(files)):
             break
         img = imageio.imread(files[index])
         img = transform.resize(img, (224, 224))
-        feed_imgs[i,:,:,:] = img
+        feed_imgs[j+i*batch_size,:,:,:] = img
     #Feeding the stacked batch to the CNN
     mat_descripts = sess.run(network.descripts, feed_dict={network.imgs: feed_imgs})
     #Concatenate descriptors to have (7*7*N_images)x(512)
