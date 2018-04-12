@@ -10,7 +10,7 @@ def guassian(X, mu, s):
 
 def em_gmm(X, k, eps, max_iters):
 
-    m, n = X.shape
+    n, m = X.shape
 
     mu = X[np.random.choice(n, k), :]
 
