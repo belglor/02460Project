@@ -1,65 +1,86 @@
 import numpy as np
+import scipy as sp
 
 
-class GMM:
-
-    """
-
-    """
-    def __init__(self, k, eps):
-        self.k = k
-        self.eps = eps
+def guassian(X, mu, s):
+    # Maybe use einsum
+    # https://stackoverflow.com/questions/26089893/understanding-numpys-einsum
+    return 1.0 / (((2 * np.pi) ** (-X.shape[1] / 2.) * np.linalg.det(s)) ** 0.5) #        np.exp(-.5 * np.matrix(X - mu) * np.linalg.inv(s) * np.matrix(X - mu).T)
 
 
+def em_gmm(X, k, eps, max_iters):
+
+    m, n = X.shape
+
+    mu = X[np.random.choice(n, k), :]
+
+    sigma = [np.eye(m)] * k
+
+    # initialize the probabilities/weights for each gaussians
+    w = [1.0 / k] * k
+
+    # responsibility matrix is initialized to all zeros
+    # we have responsibility for each of n points for eack of k gaussians
+    gamma = np.zeros((n, k))
+
+    # log_likelihoods
+    log_likelihoods = []
+
+    P = guassian(X, mu, sigma)
+
+    # Iterate till max_iters iterations
+    while len(log_likelihoods) < max_iters:
+        # Bishop 438-439 (PDF 455-456)
+        # E Step
+
+        # Vectorized implementation of e-step equation to calculate the
+        # membership for each of k -gaussians
+        for k in range(k):
+            gamma[:, k] = w[k] * P(mu[k], sigma[k])
+
+        # Likelihood computation
+        log_likelihood = np.sum(np.log(np.sum(gamma, axis=1)))
+
+        log_likelihoods.append(log_likelihood)
+
+        # Normalize so that the responsibility matrix is row stochastic
+        gamma = (gamma.T / np.sum(gamma, axis=1)).T
+
+        # The number of datapoints belonging to each gaussian
+        N_ks = np.sum(gamma, axis=0)
+
+        # M Step
+        # calculate the new mean and covariance for each gaussian by
+        # utilizing the new responsibilities
+        for k in range(k):
+
+            # means
+            mu[k] = 1.0 / N_ks[k] * np.sum(gamma[:, k] * X.T, axis=1).T
+            x_mu = np.matrix(X - mu[k])
+
+            # covariances
+            sigma[k] = np.array(1.0 / N_ks[k] * np.dot(np.multiply(x_mu.T, gamma[:, k]), x_mu))
+
+            # and finally the probabilities
+            w[k] = 1.0 / n * N_ks[k]
+        # check for onvergence
+        if len(log_likelihoods) < 2:
+            continue
+        if np.abs(log_likelihood - log_likelihoods[-2]) < eps:
+            break
+
+    # bind all results together
+    from collections import namedtuple
+    params = namedtuple('params', ['mu', 'sigma', 'w', 'log_likelihoods', 'max_iters'])
+    params.mu = mu
+    params.sigma = sigma
+    params.w = w
+    params.log_likelihoods = log_likelihoods
+    params.num_iters = len(log_likelihoods)
+
+    return params
 
 
-    def em_step(self, X, iters):
+X = sp.append(sp.random.multivariate_normal([-3.5, 5.0], sp.eye(2)*4, 50), sp.random.multivariate_normal([-8.2, 10.0], sp.eye(2)*2, 70)).reshape(50+70, 2)
 
-        # m = rows, n = columns
-        m, n = X.shape
-
-        # mean / starting points
-        mu = X[np.random.choice(n, self.k), :]
-
-        # covariance matrix for each guassian
-        sigma = [np.eye(m)] * self.k
-
-        # weights for probabilities, if k = 2, then we have two probabilities
-        w = [1./self.k] * self.k
-
-        # responsibility matrix is initialized to all zeros
-        # we have responsibility for each of n points for eack of k gaussians
-        R = np.zeros((n, self.k))
-
-        # log_likelihoods
-        log_likelihoods = []
-
-        P = lambda mu, s: np.linalg.det(s) ** -.5 ** (2 * np.pi) ** (-X.shape[1] / 2.) \
-                          * np.exp(-.5 * np.einsum('ij, ij -> i',
-                                                   X - mu, np.dot(np.linalg.inv(s), (X - mu).T).T))
-
-        return P
-
-
-np.random.seed(3)
-m1, cov1 = [9, 8], [[.5, 1], [.25, 1]]  ## first gaussian
-data1 = np.random.multivariate_normal(m1, cov1, 90)
-
-m2, cov2 = [6, 13], [[.5, -.5], [-.5, .1]]  ## second gaussian
-data2 = np.random.multivariate_normal(m2, cov2, 45)
-
-m3, cov3 = [4, 7], [[0.25, 0.5], [-0.1, 0.5]]  ## third gaussian
-data3 = np.random.multivariate_normal(m3, cov3, 65)
-X = np.vstack((data1, np.vstack((data2, data3))))
-
-m, n = X.shape
-
-
-# mean / starting points
-mu = X[np.random.choice(n, 3), :]
-
-# covariance matrix for each guassian
-sigma = [np.eye(m)] * 3
-
-gmm = GMM(3, 0.00001)
-print(gmm.em_step(X, iters=100))
+em_gmm(X, 3, 0.000001, 100)
