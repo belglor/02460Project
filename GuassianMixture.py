@@ -1,86 +1,64 @@
+from scipy.linalg import det, inv
 import numpy as np
-import scipy as sp
 
 
-def guassian(X, mu, s):
-    # Maybe use einsum
-    # https://stackoverflow.com/questions/26089893/understanding-numpys-einsum
-    return 1.0 / (((2 * np.pi) ** (-X.shape[1] / 2.) * np.linalg.det(s)) ** 0.5) #        np.exp(-.5 * np.matrix(X - mu) * np.linalg.inv(s) * np.matrix(X - mu).T)
+def gaussian_fun(x, u, sigma):
+    x, u = np.array(x), np.array(u)
+    x_mu = x-u
+    return np.exp(-(np.dot(x_mu, np.dot(inv(sigma), x_mu)))/2.0) / (((2*np.pi)**(x.shape[0]/2.0)) * (det(sigma) ** 0.5))
 
 
-def em_gmm(X, k, eps, max_iters):
+def gmm(X, K, max_iter=10, eps=1e-6):
+    """
+    Gaussian Mixture Model With EM
+    Arguments:
+    - `X`: Input data (2D array).
+    - `K`: Number of clusters.
+    - `max_iter`: Number of iterations to run.
+    - `eps`: Tolerance.
+    """
+    X = np.array(X)
+    N, D = X.shape
+    pi = np.ones(K) * 1.0/K
+    pi = [1./K] * K
+    mu = np.random.rand(K, D)
+    sigma = np.array([np.eye(D) for i in range(K)])
+    L = np.inf
 
-    n, m = X.shape
+    for i in range(max_iter):
+        # E-step
+        gamma = np.apply_along_axis(lambda x: np.fromiter((pi[k] * gaussian_fun(x, mu[k], sigma[k]) for k in range(K)), dtype=float), 1, X)
+        gamma /= np.sum(gamma, 1)[:, np.newaxis]
 
-    mu = X[np.random.choice(n, k), :]
+        # M-step
+        Nk = np.sum(gamma, 0)
+        mu = np.sum(X*gamma.T[:, :, np.newaxis], 1) / Nk[Ellipsis, np.newaxis]
+        x_mu = X[:, np.newaxis, :] - mu
+        sigma = np.sum(gamma[Ellipsis, np.newaxis, np.newaxis] * x_mu[:, :, np.newaxis, :] * x_mu[:, :, :, np.newaxis], 0) / Nk[Ellipsis, np.newaxis, np.newaxis]
+        pi = Nk / N
 
-    sigma = [np.eye(m)] * k
+        # Likelihood
+        Lnew = np.sum(np.log2(np.sum(np.apply_along_axis(lambda x: np.fromiter((pi[k] * gaussian_fun(x, mu[k], sigma[k]) for k in range(K)), dtype=float), 1, X), 1)))
+        if abs(L-Lnew) < eps: break
+        L = Lnew
+        print("L=%s" % L)
 
-    # initialize the probabilities/weights for each gaussians
-    w = [1.0 / k] * k
+    cls = np.zeros(N)
+    for i in range(K):
+        cls[gamma[:, i] > 1.0/K] = i
 
-    # responsibility matrix is initialized to all zeros
-    # we have responsibility for each of n points for eack of k gaussians
-    gamma = np.zeros((n, k))
-
-    # log_likelihoods
-    log_likelihoods = []
-
-    P = guassian(X, mu, sigma)
-
-    # Iterate till max_iters iterations
-    while len(log_likelihoods) < max_iters:
-        # Bishop 438-439 (PDF 455-456)
-        # E Step
-
-        # Vectorized implementation of e-step equation to calculate the
-        # membership for each of k -gaussians
-        for k in range(k):
-            gamma[:, k] = w[k] * P(mu[k], sigma[k])
-
-        # Likelihood computation
-        log_likelihood = np.sum(np.log(np.sum(gamma, axis=1)))
-
-        log_likelihoods.append(log_likelihood)
-
-        # Normalize so that the responsibility matrix is row stochastic
-        gamma = (gamma.T / np.sum(gamma, axis=1)).T
-
-        # The number of datapoints belonging to each gaussian
-        N_ks = np.sum(gamma, axis=0)
-
-        # M Step
-        # calculate the new mean and covariance for each gaussian by
-        # utilizing the new responsibilities
-        for k in range(k):
-
-            # means
-            mu[k] = 1.0 / N_ks[k] * np.sum(gamma[:, k] * X.T, axis=1).T
-            x_mu = np.matrix(X - mu[k])
-
-            # covariances
-            sigma[k] = np.array(1.0 / N_ks[k] * np.dot(np.multiply(x_mu.T, gamma[:, k]), x_mu))
-
-            # and finally the probabilities
-            w[k] = 1.0 / n * N_ks[k]
-        # check for onvergence
-        if len(log_likelihoods) < 2:
-            continue
-        if np.abs(log_likelihood - log_likelihoods[-2]) < eps:
-            break
-
-    # bind all results together
-    from collections import namedtuple
-    params = namedtuple('params', ['mu', 'sigma', 'w', 'log_likelihoods', 'max_iters'])
-    params.mu = mu
-    params.sigma = sigma
-    params.w = w
-    params.log_likelihoods = log_likelihoods
-    params.num_iters = len(log_likelihoods)
-
-    return params
+    return dict(pi=pi, mu=mu, sigma=sigma, gamma=gamma, classification=cls)
 
 
-X = sp.append(sp.random.multivariate_normal([-3.5, 5.0], sp.eye(2)*4, 50), sp.random.multivariate_normal([-8.2, 10.0], sp.eye(2)*2, 70)).reshape(50+70, 2)
-
-em_gmm(X, 3, 0.000001, 100)
+if __name__ == '__main__':
+    X = np.append(np.random.multivariate_normal([-3.5, 5.0], np.eye(2)*4, 50),
+                     np.random.multivariate_normal([-8.2, 10.0], np.eye(2)*2, 70)).reshape(50+70, 2)
+    K = 2
+    d = gmm(X, K)
+    print("\npi = {}\n\nmu = {}\n\nsigma = {}\n\n".format(d['pi'], d['mu'], d['sigma']))
+    gamma = d['gamma']
+    # print( gamma)
+    # from sklearn import mixture
+    # g = mixture.GaussianMixture(n_components=2)
+    # g_gmm = g.fit(X)
+    # print("weights.{} og means{} og covar{}".format(g.weights_, g.means_, g.covariances_))
