@@ -8,7 +8,7 @@
 
 import tensorflow as tf
 import numpy as np
-import imageio
+from scipy.misc import imread, imresize
 from skimage import transform
 import sys
 import glob
@@ -269,14 +269,18 @@ class fvcnn:
         s0, s1, s2 = np.zeros([n_mixtures]), np.zeros([dim_samples, n_mixtures]), np.zeros([dim_samples, n_mixtures])
         samples = zip(range(0, len(samples)), samples)
         #BE CAREFUL: I'M ALLOWING SINGULAR MATRICES FOR COVARIANCE
-        g = [multivariate_normal(mean=means[k], cov=covs[k], allow_singular = True) for k in range(0, weights.size) ]
+        for k in range(0, weights.size):
+            g = [multivariate_normal(mean=means[k], cov=covs[k], allow_singular = True)]
         for index, x in samples:
+            print(index)
+            print(x)
+            sys.stdout.flush()
             gaussians[index] = np.array([g_k.pdf(x) for g_k in g])
-        # Set inf or NaN probs to 1
-        for j in range(gaussians.shape[0]):
-            for k in range(gaussians.shape[1]):                
-                if(math.isnan(gaussians[j,k]) or math.isinf(gaussians[j,k]) or (gaussians[j,k]>1)):
-                    gaussians[j,k] = 1
+#        # Set inf or NaN probs to 1
+#        for j in range(gaussians.shape[0]):
+#            for k in range(gaussians.shape[1]):                
+#                if(math.isnan(gaussians[j,k]) or math.isinf(gaussians[j,k]) or (gaussians[j,k]>1)):
+#                    gaussians[j,k] = 1
                         
         for k in range(0, weights.size):
             s0[k], s1[k], s2[k] = 0, 0, 0
@@ -362,8 +366,8 @@ network = fvcnn(imgs, 'vgg16_weights.npz', sess)
 folder = "./dtd/images/*/"
 extns = "*.jpg"
 files = glob.glob(folder+extns)
-batch_size = 5
-batch_to_load = 1 # Use len(files)//batch_size for whole dataset
+batch_size = 10
+batch_to_load = 100 # Use len(files)//batch_size for whole dataset
 feed_imgs = np.zeros([batch_size, 224, 224, 3])
 loaded_tracker = [] #tracker to not random sample same pic twice
 print('Dividing the data in ' + str(batch_to_load) + ' batches of size ' + str(batch_size) + ':')
@@ -384,9 +388,9 @@ for i in range(batch_to_load):
         #Check index to prevent out-of-bounds
         if(index>=len(files)):
             break
-        img = imageio.imread(files[index])
-        img = transform.resize(img, (224, 224))
-        feed_imgs[j+i*batch_size,:,:,:] = img
+        img = imread(files[index], mode ='RGB')
+        img = imresize(img, (224, 224))
+        feed_imgs[j,:,:,:] = img
     #Feeding the stacked batch to the CNN
     mat_descripts = sess.run(network.descripts, feed_dict={network.imgs: feed_imgs})
     #Concatenate descriptors to have (7*7*N_images)x(512)
@@ -402,7 +406,7 @@ for i in range(batch_to_load):
 #%%
 #Cluster with GMM: use EM and return components means, covs and weights
 #Number of GMM components
-N = 64
+N = 6
 means, covs, weights = network.generate_GMM(descripts, N) #NB THERE HAS TO BE SOME FORM OF RESHAPING/CONCATENATION
 
 #%%
