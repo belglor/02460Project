@@ -249,7 +249,7 @@ class fvcnn:
 #        em = cv2.ml.EM_create()
 #        em.setClustersNumber(N)
 #        em.trainEM(descriptors)
-        gmm = mixture.GaussianMixture(N)
+        gmm = mixture.GaussianMixture(N,covariance_type='diag')
         gmm.fit(descriptors)
         return np.float32(gmm.means_), \
         		np.float32(gmm.covariances_), np.float32(gmm.weights_)
@@ -266,41 +266,40 @@ class fvcnn:
         dim_samples = samples.shape[1]
         n_mixtures = weights.shape[0]
         gaussians = np.zeros([n_samples, n_mixtures])
-        s0, s1, s2 = np.zeros([n_mixtures]), np.zeros([dim_samples, n_mixtures]), np.zeros([dim_samples, n_mixtures])
-        samples = zip(range(0, len(samples)), samples)
         #BE CAREFUL: I'M ALLOWING SINGULAR MATRICES FOR COVARIANCE
-        for k in range(0, weights.size):
-            g = [multivariate_normal(mean=means[k], cov=covs[k], allow_singular = True)]
-        for index, x in samples:
-            print(index)
-            print(x)
-            sys.stdout.flush()
-            gaussians[index] = np.array([g_k.pdf(x) for g_k in g])
-#        # Set inf or NaN probs to 1
-#        for j in range(gaussians.shape[0]):
-#            for k in range(gaussians.shape[1]):                
-#                if(math.isnan(gaussians[j,k]) or math.isinf(gaussians[j,k]) or (gaussians[j,k]>1)):
-#                    gaussians[j,k] = 1
-                        
-        for k in range(0, weights.size):
-            s0[k], s1[k], s2[k] = 0, 0, 0
-            for index, x in samples:
-                probabilities = np.multiply(gaussians[index], weights.T)                
-                probabilities = probabilities / np.sum(probabilities)
-                s0[k] = s0[k] + self.likelihood_moment(x, probabilities[k], 0)
-                s1[:,k] = s1[:,k] + self.likelihood_moment(x, probabilities[k], 1)
-                s2[k] = s2[k] + self.likelihood_moment(x, probabilities[k], 2)
+        # Create a ultivariate normal for each of the mixture components
+        g = []
+        for k in range(n_mixtures):
+            g.append(multivariate_normal(mean=means[k], cov=covs[k], allow_singular = True))
+        #For each observation, compute the likelihood of being in one of the mixture
+        for index in range(n_samples):
+            for k in range(n_mixtures):
+                gaussians[index,k] = g[k].logpdf(samples[index,:])
+        
+        s0 = np.zeros([n_mixtures])
+        s1 = np.zeros([n_mixtures,dim_samples])
+        s2 = np.zeros([n_mixtures,dim_samples]) 
+        probs = np.multiply(gaussians, weights.T)
+        # For each observation, create probability matrix
+        for index in range(n_samples):
+            probs[index,:] = probs[index,:] / sum(probs[index,:])
+            
+        for index in range(n_samples):
+            for k in range(n_mixtures):                
+                s0[k] = s0[k] + self.likelihood_moment(samples[index,:], probs[index,k], 0)
+                s1[k] = s1[k,:] + self.likelihood_moment(samples[index,:], probs[index,k], 1)
+                s2[k] = s2[k,:] + self.likelihood_moment(samples[index,:], probs[index,k], 2)
 
         return s0, s1, s2
     
     def fisher_vector_weights(self, s0, s1, s2, means, covs, w, T):
-        	return np.float32([((s0[k] - T * w[k]) / np.sqrt(w[k]) ) for k in range(0, len(w))])
+        	return np.float32([((s0[k] - T * w[k]) / np.sqrt(w[k]) ) for k in range(len(w))])
     
     def fisher_vector_means(self, s0, s1, s2, means, sigma, w, T):
-        	return np.float32([(s1[:,k] - means[k] * s0[k]) / (np.sqrt(w[k] * sigma[k])) for k in range(0, len(w))])
+        	return np.float32([(s1[k,:] - means[k] * s0[k]) / (np.sqrt(w[k] * sigma[k])) for k in range(0, len(w))])
     
     def fisher_vector_sigma(self, s0, s1, s2, means, sigma, w, T):
-        	return np.float32([(s2[:,k] - 2 * means[k]*s1[:,k]  + (means[k]*means[k] - sigma[k]) * s0[k]) / (np.sqrt(2*w[k])*sigma[k])  for k in range(0, len(w))])
+        	return np.float32([(s2[k,:] - 2 * means[k]*s1[k,:]  + (means[k]*means[k] - sigma[k]) * s0[k]) / (np.sqrt(2*w[k])*sigma[k])  for k in range(len(w))])
     
     def normalize(self, fisher_vector):
         	v = np.sqrt(abs(fisher_vector)) * np.sign(fisher_vector)
@@ -310,7 +309,6 @@ class fvcnn:
     def fisher_vector(self, samples, means, covs, weights):
         s0, s1, s2 =  self.likelihood_statistics(samples, means, covs, weights)
         T = samples.shape[0]
-        covs = np.float32([np.diagonal(covs[k]) for k in range(0, covs.shape[0])])
         a = self.fisher_vector_weights(s0, s1, s2, means, covs, weights, T)
         b = self.fisher_vector_means(s0, s1, s2, means, covs, weights, T)
         c = self.fisher_vector_sigma(s0, s1, s2, means, covs, weights, T)
@@ -357,76 +355,82 @@ class fvcnn:
     
 #%%
 
-#Opening TF session and building the net        
-sess = tf.Session()
-imgs = tf.placeholder(tf.float32, [None, 224, 224, 3])
-network = fvcnn(imgs, 'vgg16_weights.npz', sess)
-
-#Reading images
-folder = "./dtd/images/*/"
-extns = "*.jpg"
-files = glob.glob(folder+extns)
-batch_size = 10
-batch_to_load = 100 # Use len(files)//batch_size for whole dataset
-feed_imgs = np.zeros([batch_size, 224, 224, 3])
-loaded_tracker = [] #tracker to not random sample same pic twice
-print('Dividing the data in ' + str(batch_to_load) + ' batches of size ' + str(batch_size) + ':')
-#Propagate through CNN in batches
-for i in range(batch_to_load): 
-    print('Loading batch #' +str(i))
-    sys.stdout.flush() 
-    #Stacking the next batch together
-    for j in range(batch_size):
-        #If not using the dataset, take random pics
-        if(batch_to_load != len(files)//batch_size):
-            index = np.random.randint(0, len(files)) 
-            while(index in loaded_tracker): #check if duplicated entry
+if __name__=='__main__':
+    #Opening TF session and building the net        
+    sess = tf.Session()
+    imgs = tf.placeholder(tf.float32, [None, 224, 224, 3])
+    network = fvcnn(imgs, 'vgg16_weights.npz', sess)
+    
+    #Reading images
+    folder = "./dtd/images/*/"
+    extns = "*.jpg"
+    files = glob.glob(folder+extns)
+    batch_size = 10
+    batch_to_load = 50 # Use len(files)//batch_size for whole dataset
+    feed_imgs = np.zeros([batch_size, 224, 224, 3])
+    loaded_tracker = [] #tracker to not random sample same pic twice
+    print('Dividing the data in ' + str(batch_to_load) + ' batches of size ' + str(batch_size) + ':')
+    #Propagate through CNN in batches
+    for i in range(batch_to_load): 
+        print('Loading batch #' +str(i))
+        sys.stdout.flush() 
+        #Stacking the next batch together
+        for j in range(batch_size):
+            #If not using the dataset, take random pics
+            if(batch_to_load != len(files)//batch_size):
                 index = np.random.randint(0, len(files)) 
-            loaded_tracker.append(index) #track loaded pics
+                while(index in loaded_tracker): #check if duplicated entry
+                    index = np.random.randint(0, len(files)) 
+                loaded_tracker.append(index) #track loaded pics
+            else:
+                index = j + i*batch_size
+            #Check index to prevent out-of-bounds
+            if(index>=len(files)):
+                break
+            img = imread(files[index], mode ='RGB')
+            img = imresize(img, (224, 224))
+            feed_imgs[j,:,:,:] = img
+        #Feeding the stacked batch to the CNN
+        mat_descripts = sess.run(network.descripts, feed_dict={network.imgs: feed_imgs})
+        #Concatenate descriptors to have (7*7*N_images)x(512)
+        if(i==0):
+            descripts = np.concatenate(mat_descripts[0,:,:,:])
+            for j in range(mat_descripts.shape[0]-1):
+                descripts = np.concatenate((descripts, np.concatenate(mat_descripts[j+1,:,:,:])))
         else:
-            index = j + i*batch_size
-        #Check index to prevent out-of-bounds
-        if(index>=len(files)):
-            break
-        img = imread(files[index], mode ='RGB')
-        img = imresize(img, (224, 224))
-        feed_imgs[j,:,:,:] = img
-    #Feeding the stacked batch to the CNN
-    mat_descripts = sess.run(network.descripts, feed_dict={network.imgs: feed_imgs})
-    #Concatenate descriptors to have (7*7*N_images)x(512)
-    if(i==0):
-        descripts = np.concatenate(mat_descripts[0,:,:,:])
-        for j in range(mat_descripts.shape[0]-1):
-            descripts = np.concatenate((descripts, np.concatenate(mat_descripts[j+1,:,:,:])))
-    else:
-        tmp_descripts = np.concatenate(mat_descripts[0,:,:,:])
-        for j in range(mat_descripts.shape[0]-1):
-            tmp_descripts = np.concatenate((tmp_descripts, np.concatenate(mat_descripts[j+1,:,:,:])))
-        descripts = np.concatenate((descripts, tmp_descripts))
-#%%
-#Cluster with GMM: use EM and return components means, covs and weights
-#Number of GMM components
-N = 6
-means, covs, weights = network.generate_GMM(descripts, N) #NB THERE HAS TO BE SOME FORM OF RESHAPING/CONCATENATION
+            tmp_descripts = np.concatenate(mat_descripts[0,:,:,:])
+            for j in range(mat_descripts.shape[0]-1):
+                tmp_descripts = np.concatenate((tmp_descripts, np.concatenate(mat_descripts[j+1,:,:,:])))
+            descripts = np.concatenate((descripts, tmp_descripts))
+    #%%
+    #Cluster with GMM: use EM and return components means, covs and weights
+    #Number of GMM components
+    N = 6
+    means, covs, weights = network.generate_GMM(descripts, N) #NB THERE HAS TO BE SOME FORM OF RESHAPING/CONCATENATION
 
-#%%
-#Compute FV
-fv = []
-for i in range(mat_descripts.shape[0]):
-    #FV procedure (unrolled for debugging)
-    samples = np.concatenate(mat_descripts[i,:,:,:])
-    # SHOULD BE FURTHER UNROLLED: LOOK AT THE GENERAL METHOD DESCRIPTIONS IN THE fvcnn CLASS
-    s0, s1, s2 =  network.likelihood_statistics(samples, means, covs, weights)
-    T = samples.shape[0]
-    tmp_covs = np.float32([np.diagonal(covs[k]) for k in range(0, covs.shape[0])])
-    a = network.fisher_vector_weights(s0, s1, s2, means, tmp_covs, weights, T)
-    b = network.fisher_vector_means(s0, s1, s2, means, tmp_covs, weights, T)
-    c = network.fisher_vector_sigma(s0, s1, s2, means, tmp_covs, weights, T)
-    fishvec = np.concatenate([a, np.concatenate(b), np.concatenate(c)])
-    fishvec = network.normalize(fishvec)
-    fv.append(fishvec)
-
-# Close tf session
-sess.close()
-#
-#
+    #%%
+    #Compute FV
+    fv = []
+    num_pics = len(loaded_tracker)
+    #Reshaping descripts into pics
+    pics_descripts = np.zeros([num_pics, 49, 512])
+    for i in range(num_pics):
+        pics_descripts[i,:,:] = descripts[49*i:(49*(i+1)),:]
+        
+    for i in range(pics_descripts.shape[0]):
+        #FV procedure (unrolled for debugging)
+        samples = pics_descripts[i,:,:]
+        # SHOULD BE FURTHER UNROLLED: LOOK AT THE GENERAL METHOD DESCRIPTIONS IN THE fvcnn CLASS
+        s0, s1, s2 =  network.likelihood_statistics(samples, means, covs, weights)
+        T = samples.shape[0]
+        a = network.fisher_vector_weights(s0, s1, s2, means, covs, weights, T)
+        b = network.fisher_vector_means(s0, s1, s2, means, covs, weights, T)
+        c = network.fisher_vector_sigma(s0, s1, s2, means, covs, weights, T)
+        fishvec = np.concatenate([a, np.concatenate(b), np.concatenate(c)])
+        fishvec = network.normalize(fishvec)
+        fv.append(fishvec)
+    
+    # Close tf session
+    sess.close()
+    #
+    #
