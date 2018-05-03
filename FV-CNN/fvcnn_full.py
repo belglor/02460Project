@@ -255,52 +255,37 @@ class fvcnn:
         return files
     
     def get_descriptors(self,feed_imgs):
-        descripts = sess.run(self.descripts, feed_dict={self.imgs: feed_imgs})
+        descripts = []
+        for i in range(len(feed_imgs)):
+            if(i%1 == 0):
+                print("Propagating picture #" +str(i)+ "/" + str(len(feed_imgs)))
+                sys.stdout.flush()
+            food = feed_imgs[i]
+            food = np.reshape(food, [1, food.shape[0], food.shape[1], food.shape[2] ])
+            descripts.append(sess.run(self.descripts, feed_dict={self.imgs: food}))
         return descripts
     
-    def forward_pass(self, files, batch_size, batch_to_load=None):
+    def forward_pass(self, files, pics_to_load=None):
         #If unspecified, load the whole dataset
-        if(batch_to_load==None):
-            batch_to_load = len(files)//batch_size
-        feed_imgs = np.zeros([batch_size, 224, 224, 3])
-        loaded_tracker = [] #tracker to not random sample same pic twice
-        pics_descripts = []
-        print('Dividing the data in ' + str(batch_to_load) + ' batches of size ' + str(batch_size) + ':')
-        #Propagate through CNN in batches
-        for i in range(batch_to_load): 
-            print('Loading batch #' +str(i))
-            sys.stdout.flush() 
-            #Stacking the next batch together
-            for j in range(batch_size):
-                #If not using the dataset, take random pics
-                if(batch_to_load != len(files)//batch_size):
-                    index = np.random.randint(0, len(files)) 
-                    while(index in loaded_tracker): #check if duplicated entry
-                        index = np.random.randint(0, len(files)) 
-                    loaded_tracker.append(index) #track loaded pics
-                else:
-                    index = j + i*batch_size
-                #Check index to prevent out-of-bounds
-                if(index>=len(files)):
-                    break
-                img = imread(files[index], mode ='RGB')
-                img = imresize(img, (224, 224))
-                feed_imgs[j,:,:,:] = img
-            #Feeding the stacked batch to the CNN
-            mat_descripts = self.get_descriptors(feed_imgs)
-            pics_descripts.append(mat_descripts)
-            #Concatenate descriptors to have (7*7*N_images)x(512)
-            if(i==0):
-                descripts = np.concatenate(mat_descripts[0,:,:,:])
-                for j in range(mat_descripts.shape[0]-1):
-                    descripts = np.concatenate((descripts, np.concatenate(mat_descripts[j+1,:,:,:])))
-            else:
-                tmp_descripts = np.concatenate(mat_descripts[0,:,:,:])
-                for j in range(mat_descripts.shape[0]-1):
-                    tmp_descripts = np.concatenate((tmp_descripts, np.concatenate(mat_descripts[j+1,:,:,:])))
-                descripts = np.concatenate((descripts, tmp_descripts))
-        #Return matrix version of descriptors for each pic in the batch and stacked descriptors in the batch
-        return pics_descripts, descripts
+        loaded_paths = []
+        feed_imgs = []
+        if pics_to_load == None:
+            pics_to_load = len(files)
+        for i in range(pics_to_load):  
+            if(i%10 == 0):
+                print("Loading picture #" +str(i)+ "/" + str(pics_to_load))
+                sys.stdout.flush()
+            img = imread(files[i], mode ='RGB')           
+            feed_imgs.append(img)
+            loaded_paths.append(files[i])
+            
+        mat_descripts = self.get_descriptors(feed_imgs)
+        #Return also stacked version of descripts
+        stacked_descripts = [] 
+        for x in mat_descripts:
+            stacked_descripts.append(np.concatenate(np.concatenate(x)))
+        stacked_descripts = np.vstack(stacked_descripts)
+        return mat_descripts, stacked_descripts, loaded_paths
         
     # Fit a GMM to descriptors (HOW ARE DESCRIPTORS FED?)
     def generate_GMM(self, descriptors, N):
@@ -370,12 +355,12 @@ class fvcnn:
         means = self.means
         covs = self.covs
         weights = self.weights
-        s0, s1, s2 =  self.likelihood_statistics(samples, means, covs, weights)
+        s0, s1, s2 =  self.likelihood_statistics(samples)
         T = samples.shape[0]
         a = self.fisher_vector_alphas(s0, s1, s2, means, covs, weights, T)
         b = self.fisher_vector_mus(s0, s1, s2, means, covs, weights, T)
         c = self.fisher_vector_sigma(s0, s1, s2, means, covs, weights, T)
-        fv = np.concatenate([np.concatenate(a), np.concatenate(b), np.concatenate(c)])
+        fv = np.concatenate([a, np.concatenate(b), np.concatenate(c)])
         fv = self.normalize(fv)
         return fv
     
@@ -388,19 +373,91 @@ class fvcnn:
 if __name__=='__main__':
     #Opening TF session and building the net        
     sess = tf.Session()
-    imgs = tf.placeholder(tf.float32, [None, 224, 224, 3])
+    imgs = tf.placeholder(tf.float32, [None, None, None, 3])
     network = fvcnn(imgs, 'vgg16_weights.npz', sess)
     
     #Reading images
-    folder = "./dtd/images/*/"
+    img_folder = "./dtd/images/*/"
+    label_folder = "./dtd/labels/"
     extns = "*.jpg"
     
-    files = network.get_data(folder,extns)
+    #Create dictionary with filenames/labels
+    data_labels = {} 
+    label_list = {}  
+    index = 0    
+    with open('./dtd/labels/labels_joint_anno.txt') as f: 
+        for line in f: 
+            words = line.split()
+            filename = "./dtd/images/"+ str(words[0])
+            filelabel = words[1]            
+            if(not filelabel in label_list):
+                label_list[filelabel] = index
+                index += 1
+            data_labels[filename] = label_list[filelabel] #Uncomment for int labels in dictionary
+            #data_labels[filename = filelabel #Uncomment for strings labels in dictionary
+           
+    #Form train/test set
+    train_data = []
+    test_data = []
+    folds = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]        
+    for i in folds:
+        train_data.append([])
+        test_data.append([])
+        train_name = "./dtd/labels/train" +str(i) +".txt"
+        with open(train_name) as f: 
+            for line in f:
+                filepath = "./dtd/images/" + line.split()[0]
+                train_data[i-1].append(filepath)
     
-    batch_size = 10
-    batch_to_load = 10
-    mat_descripts, descripts = network.forward_pass(files,batch_size,batch_to_load)
+        test_name = "./dtd/labels/test" +str(i) +".txt"
+        with open(test_name) as f: 
+            for line in f: 
+                filepath = "./dtd/images/" + line.split()[0]
+                test_data[i-1].append(filepath)
+                
+    f.close()
     
-    N = 2
-    network.generate_GMM(descripts, N)
-   
+    #For now, consider only fold 1
+    to_do_folds = [0]
+    pics_to_load = None
+
+
+    # We use the mat_descripts to convert the features of each image into a fv, 
+    # the stacked descripts to learn the gmm and the loaded file tracker to
+    # write the labels
+    train_mat_descripts, train_descripts, train_loaded_paths = network.forward_pass(train_data[to_do_folds[0]], pics_to_load)
+    test_mat_descripts, test_descripts, test_loaded_paths = network.forward_pass(test_data[to_do_folds[0]], pics_to_load)
+        
+    train_loaded_labels = []
+    for i in range(len(train_loaded_paths)):
+        train_loaded_labels.append(data_labels[train_loaded_paths[i]])
+        
+    test_loaded_labels = []
+    for i in range(len(test_loaded_paths)):
+        test_loaded_labels.append(data_labels[test_loaded_paths[i]])
+#%%
+    N = 64
+    network.generate_GMM(train_descripts, N)
+    
+    train_fv = []
+    for i in range(len(train_mat_descripts)):
+        train_fv.append(network.fisher_vector(np.concatenate(np.concatenate(train_mat_descripts[i]))))
+    train_fv = np.stack(train_fv)
+    
+    test_fv = []
+    for i in range(len(test_mat_descripts)):
+        test_fv.append(network.fisher_vector(np.concatenate(np.concatenate(test_mat_descripts[i]))))
+    test_fv = np.stack(test_fv) 
+    
+    #SVM classify
+    import sklearn
+    clf = sklearn.svm.LinearSVC(penalty='l2', loss='hinge', 
+                                dual=True, tol=0.0001, C=1.0, multi_class='ovr', 
+                                fit_intercept=True, intercept_scaling=1, 
+                                class_weight=None, verbose=0, 
+                                random_state=None, max_iter=1000)
+    
+    clf.fit(train_fv,train_loaded_labels)
+    results = clf.predict(test_fv)
+
+    
