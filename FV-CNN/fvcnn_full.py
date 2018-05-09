@@ -8,13 +8,14 @@
 
 import tensorflow as tf
 import numpy as np
-from scipy.misc import imread, imresize
-from skimage import transform
+from scipy.misc import imread
 import sys
 import glob
-import math
 from sklearn import mixture
 from scipy.stats import multivariate_normal
+import shelve
+from sklearn.model_selection import KFold
+import os
 
 # FVCNN class builder
 # When called, the class uses tf layers to build a VGG16 CNN network (note that only the 
@@ -258,7 +259,7 @@ class fvcnn:
         descripts = []
         for i in range(len(feed_imgs)):
             if(i%1 == 0):
-                print("Propagating picture #" +str(i)+ "/" + str(len(feed_imgs)))
+                print("\t - Propagating picture #" +str(i)+ "/" + str(len(feed_imgs)))
                 sys.stdout.flush()
             food = feed_imgs[i]
             food = np.reshape(food, [1, food.shape[0], food.shape[1], food.shape[2] ])
@@ -273,12 +274,12 @@ class fvcnn:
             pics_to_load = len(files)
         for i in range(pics_to_load):  
             if(i%10 == 0):
-                print("Loading picture #" +str(i)+ "/" + str(pics_to_load))
+                print("\t - Loading picture #" +str(i)+ "/" + str(pics_to_load))
                 sys.stdout.flush()
             img = imread(files[i], mode ='RGB')           
             feed_imgs.append(img)
             loaded_paths.append(files[i])
-            
+        print("\n")
         mat_descripts = self.get_descriptors(feed_imgs)
         #Return also stacked version of descripts
         stacked_descripts = [] 
@@ -384,80 +385,160 @@ if __name__=='__main__':
     #Create dictionary with filenames/labels
     data_labels = {} 
     label_list = {}  
+    files = []
+    file_labels = []
     index = 0    
     with open('./dtd/labels/labels_joint_anno.txt') as f: 
         for line in f: 
             words = line.split()
             filename = "./dtd/images/"+ str(words[0])
-            filelabel = words[1]            
+            filelabel = line.split("/")[0]
             if(not filelabel in label_list):
                 label_list[filelabel] = index
                 index += 1
             data_labels[filename] = label_list[filelabel] #Uncomment for int labels in dictionary
+            files.append(filename)
+            file_labels.append(label_list[filelabel])
             #data_labels[filename = filelabel #Uncomment for strings labels in dictionary
            
     #Form train/test set
-    train_data = []
-    test_data = []
-    folds = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]        
-    for i in folds:
-        train_data.append([])
-        test_data.append([])
-        train_name = "./dtd/labels/train" +str(i) +".txt"
-        with open(train_name) as f: 
-            for line in f:
-                filepath = "./dtd/images/" + line.split()[0]
-                train_data[i-1].append(filepath)
+    kf = KFold(n_splits=10, shuffle=True, random_state=42)
     
-        test_name = "./dtd/labels/test" +str(i) +".txt"
-        with open(test_name) as f: 
-            for line in f: 
-                filepath = "./dtd/images/" + line.split()[0]
-                test_data[i-1].append(filepath)
-                
-    f.close()
-    
-    #For now, consider only fold 1
-    to_do_folds = [0]
-    pics_to_load = None
-
-
-    # We use the mat_descripts to convert the features of each image into a fv, 
-    # the stacked descripts to learn the gmm and the loaded file tracker to
-    # write the labels
-    train_mat_descripts, train_descripts, train_loaded_paths = network.forward_pass(train_data[to_do_folds[0]], pics_to_load)
-    test_mat_descripts, test_descripts, test_loaded_paths = network.forward_pass(test_data[to_do_folds[0]], pics_to_load)
+    pics_to_load = 3
+    folds_done = 0
+    max_folds=10
+    for train, test in kf.split(files, file_labels):
+        # LOOP OVER LESS FOLDS?
+        if(folds_done>=max_folds):
+            break
         
-    train_loaded_labels = []
-    for i in range(len(train_loaded_paths)):
-        train_loaded_labels.append(data_labels[train_loaded_paths[i]])
+        print("#################################################")
+        print("#                 NEXT FOLD, "+str(folds_done)+"                  #")
+        print("#################################################")
+        # We use the mat_descripts to convert the features of each image into a fv, 
+        # the stacked descripts to learn the gmm and the loaded file tracker to
+        # write the labels
+        #Since we're using lists, we have some pre-processing to do
+        train_data = [files[i] for i in train]
+        test_data = [files[i] for i in test]
         
-    test_loaded_labels = []
-    for i in range(len(test_loaded_paths)):
-        test_loaded_labels.append(data_labels[test_loaded_paths[i]])
-#%%
-    N = 64
-    network.generate_GMM(train_descripts, N)
-    
-    train_fv = []
-    for i in range(len(train_mat_descripts)):
-        train_fv.append(network.fisher_vector(np.concatenate(np.concatenate(train_mat_descripts[i]))))
-    train_fv = np.stack(train_fv)
-    
-    test_fv = []
-    for i in range(len(test_mat_descripts)):
-        test_fv.append(network.fisher_vector(np.concatenate(np.concatenate(test_mat_descripts[i]))))
-    test_fv = np.stack(test_fv) 
-    
-    #SVM classify
-    import sklearn
-    clf = sklearn.svm.LinearSVC(penalty='l2', loss='hinge', 
-                                dual=True, tol=0.0001, C=1.0, multi_class='ovr', 
-                                fit_intercept=True, intercept_scaling=1, 
-                                class_weight=None, verbose=0, 
-                                random_state=None, max_iter=1000)
-    
-    clf.fit(train_fv,train_loaded_labels)
-    results = clf.predict(test_fv)
+        #Shuffle the data
+        np.random.shuffle(train_data)
+        np.random.shuffle(test_data)
+        
+        print("\n-> Loading/propagating training pics through the CNN...\n")
+        train_mat_descripts, train_descripts, train_loaded_paths = network.forward_pass(train_data, pics_to_load)
+        print("Complete! \n")
+        
+        print("\n-> Loading/propagating test pics through the CNN...\n")
+        test_mat_descripts, test_descripts, test_loaded_paths = network.forward_pass(test_data, pics_to_load)
+        print("-> Complete! \n")
+        
+        train_loaded_labels = []
+        for i in range(len(train_loaded_paths)):
+            train_loaded_labels.append(data_labels[train_loaded_paths[i]])
+            
+        test_loaded_labels = []
+        for i in range(len(test_loaded_paths)):
+            test_loaded_labels.append(data_labels[test_loaded_paths[i]])
+    #%%
+        N = 2
+        print("-> Dictionary creation through GMM...")
+        network.generate_GMM(train_descripts, N)
+        print("-> ...completed! \n")
+        
+        print("-> Computing training FV")
+        train_fv = []
+        for i in range(len(train_mat_descripts)):
+            print("\t - Computing FV for pic "+str(i) + "/" +str(len(train_mat_descripts)))
+            train_fv.append(network.fisher_vector(np.concatenate(np.concatenate(train_mat_descripts[i]))))
+        train_fv = np.stack(train_fv)
+        print("Done! \n")
+        
+        print("-> Computing test FV")
+        test_fv = []
+        for i in range(len(test_mat_descripts)):
+            print("\t - Computing FV for pic "+str(i) + "/" +str(len(train_mat_descripts)))
+            test_fv.append(network.fisher_vector(np.concatenate(np.concatenate(test_mat_descripts[i]))))
+        test_fv = np.stack(test_fv) 
+        print("-> Done! \n")
+        
+        #SVM classify
+        import sklearn.svm
+        print("-> Creating the classifier:")
+        clf = sklearn.svm.LinearSVC(penalty='l2', loss='hinge', 
+                                    dual=True, tol=0.0001, C=1.0, multi_class='ovr', 
+                                    fit_intercept=True, intercept_scaling=1, 
+                                    class_weight=None, verbose=0, 
+                                    random_state=None, max_iter=1000)
+        print("-> Training...")
+        clf.fit(train_fv,train_loaded_labels)
+        print("-> Completed!")
+        results = clf.predict(test_fv)
+        
+        #%%
+        #Saving the workspace
+        
+        #Extracting network parameters that we want to save
+        means = network.means
+        covs = network.covs
+        weights = network.weights
+        
+        filename = "fold" + str(folds_done) + "_results" 
+        current_directory = os.getcwd()
+        final_directory = os.path.join(current_directory, filename)
+        if not os.path.exists(final_directory):
+            os.makedirs(filename)
+        os.chdir(final_directory)
 
-    
+        my_shelf = shelve.open(filename,'n') # 'n' for new
+        
+        for key in dir():
+            try:
+                my_shelf[key] = globals()[key]
+            except:
+                #
+                # __builtins__, my_shelf, and imported modules can not be shelved.
+                #
+                pass
+        my_shelf.close()
+
+        os.chdir(current_directory)
+            
+        folds_done += 1
+        
+#%%      
+        
+        ################ IGNORE THIS ##################
+        
+        
+        
+#    ##UNCOMMENT TO RESTORE WORKSPACE
+#    import os
+#    import shelve
+#    filename = "fold0_results"
+#    current_directory = os.getcwd()
+#    final_directory = os.path.join(current_directory, filename)
+#    if not os.path.exists(final_directory):
+#        os.makedirs(filename)
+#    os.chdir(final_directory)
+#    
+#
+#    my_shelf = shelve.open(filename)
+#    vari = []
+#    for key in my_shelf:
+#        vari.append(key)
+#        
+#    for key in vari:
+#        globals()[key]=my_shelf[key]
+#    #print(str(key))
+#    my_shelf.close()
+#    
+#    os.chdir(current_directory)
+#    
+#import pickle
+#import os
+#import shelve
+#f = open("train_fv","rb")
+#train_fv = pickle.load(f)
+#f.close()
