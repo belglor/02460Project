@@ -404,16 +404,31 @@ if __name__=='__main__':
     #Form train/test set
     kf = KFold(n_splits=10, shuffle=True, random_state=42)
     
-    pics_to_load = 3
-    folds_done = 0
+    pics_to_load = None
+    current_fold = 0
     max_folds=10
+    
+    # SELECT HERE WHICH FOLDS YOU WANT TO RUN, IN ASCENDING ORDER (due to zero-indent, from 0 to 9)
+    # FOLD 0: DONE 
+    # FOLD 1: DONE
+    # FOLD 2: DONE
+    # FOLD 3: LORENZO
+    # FOLD 4: SOREN
+    # FOLD 5: SOREN
+    # FOLD 6: JESPER
+    # FOLD 7: MIRZA 
+    # FOLD 8: MIRZA
+    # FOLD 9: MIRZA
+    
+    to_do_folds = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
     for train, test in kf.split(files, file_labels):
         # LOOP OVER LESS FOLDS?
-        if(folds_done>=max_folds):
-            break
+        if(not (current_fold in to_do_folds)):
+            current_fold += 1
+            
         
         print("#################################################")
-        print("#                 NEXT FOLD, "+str(folds_done)+"                  #")
+        print("#                 NEXT FOLD, "+str(current_fold)+"                  #")
         print("#################################################")
         # We use the mat_descripts to convert the features of each image into a fv, 
         # the stacked descripts to learn the gmm and the loaded file tracker to
@@ -442,7 +457,7 @@ if __name__=='__main__':
         for i in range(len(test_loaded_paths)):
             test_loaded_labels.append(data_labels[test_loaded_paths[i]])
     #%%
-        N = 2
+        N = 64
         print("-> Dictionary creation through GMM...")
         network.generate_GMM(train_descripts, N)
         print("-> ...completed! \n")
@@ -484,7 +499,7 @@ if __name__=='__main__':
         covs = network.covs
         weights = network.weights
         
-        filename = "fold" + str(folds_done) + "_results" 
+        filename = "fold" + str(current_fold) + "_results" 
         current_directory = os.getcwd()
         final_directory = os.path.join(current_directory, filename)
         if not os.path.exists(final_directory):
@@ -505,7 +520,7 @@ if __name__=='__main__':
 
         os.chdir(current_directory)
             
-        folds_done += 1
+        current_fold += 1
         
 #%%      
         
