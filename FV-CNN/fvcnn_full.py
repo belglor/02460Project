@@ -409,18 +409,19 @@ if __name__=='__main__':
     max_folds=10
 
     # SELECT HERE WHICH FOLDS YOU WANT TO RUN, IN ASCENDING ORDER (due to zero-indent, from 0 to 9)
-    # FOLD 0: MIRZA
+    # FOLD 0: MIRZA to_do_folds = [0, 1, 2]
     # FOLD 1: MIRZA
     # FOLD 2: MIRZA
-    # FOLD 3: LORENZO
+    # FOLD 3: LORENZO to_do_folds = [3, 4]
     # FOLD 4: LORENZO
-    # FOLD 5: JESPER
+    # FOLD 5: JESPER to_do_folds = [5, 6]
     # FOLD 6: JESPER
-    # FOLD 7: SOREN
+    # FOLD 7: SOREN to_do_folds = [7, 8, 9]
     # FOLD 8: SOREN
     # FOLD 9: SOREN
 
-    to_do_folds = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+    to_do_folds = YOURFOLD
+    # to_do_folds = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
     for train, test in kf.split(files, file_labels):
         # LOOP OVER LESS FOLDS?
         if(not (current_fold in to_do_folds)):
