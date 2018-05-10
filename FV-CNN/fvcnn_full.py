@@ -13,9 +13,9 @@ import sys
 import glob
 from sklearn import mixture
 from scipy.stats import multivariate_normal
-import shelve
 from sklearn.model_selection import KFold
 import os
+from types import ModuleType
 
 # FVCNN class builder
 # When called, the class uses tf layers to build a VGG16 CNN network (note that only the 
@@ -425,7 +425,7 @@ if __name__=='__main__':
         # LOOP OVER LESS FOLDS?
         if(not (current_fold in to_do_folds)):
             current_fold += 1
-            
+            continue
         
         print("#################################################")
         print("#                 NEXT FOLD, "+str(current_fold)+"                  #")
@@ -505,18 +505,18 @@ if __name__=='__main__':
         if not os.path.exists(final_directory):
             os.makedirs(filename)
         os.chdir(final_directory)
-
-        my_shelf = shelve.open(filename,'n') # 'n' for new
         
+        import pickle
         for key in dir():
             try:
-                my_shelf[key] = globals()[key]
+                to_save = globals()[key]
+                if(isinstance(to_save, ModuleType)):
+                    continue
+                f = open(key,"wb")
+                pickle.dump(to_save,f)
+                f.close()
             except:
-                #
-                # __builtins__, my_shelf, and imported modules can not be shelved.
-                #
                 pass
-        my_shelf.close()
 
         os.chdir(current_directory)
             
