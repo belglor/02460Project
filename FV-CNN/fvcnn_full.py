@@ -16,6 +16,7 @@ from scipy.stats import multivariate_normal
 from sklearn.model_selection import KFold
 import os
 from types import ModuleType
+import pickle
 
 # FVCNN class builder
 # When called, the class uses tf layers to build a VGG16 CNN network (note that only the
@@ -507,7 +508,6 @@ if __name__=='__main__':
             os.makedirs(filename)
         os.chdir(final_directory)
 
-        import pickle
         for key in dir():
             try:
                 to_save = globals()[key]
