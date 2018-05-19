@@ -15,6 +15,8 @@ from sklearn import mixture
 from scipy.stats import multivariate_normal
 from sklearn.model_selection import KFold
 import os
+import time
+import timeit
 from types import ModuleType
 import pickle
 
@@ -421,8 +423,7 @@ if __name__=='__main__':
     # FOLD 8: SOREN
     # FOLD 9: SOREN
 
-    to_do_folds = YOURFOLD
-    # to_do_folds = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+    to_do_folds = [0]
     for train, test in kf.split(files, file_labels):
         # LOOP OVER LESS FOLDS?
         if(not (current_fold in to_do_folds)):
@@ -432,6 +433,11 @@ if __name__=='__main__':
         print("#################################################")
         print("#                 NEXT FOLD, "+str(current_fold)+"                  #")
         print("#################################################")
+        print("#################################################")
+        print("#                 TIME is {}#".format(time.ctime))
+        print("#################################################")
+
+        start = timeit.default_timer()
         # We use the mat_descripts to convert the features of each image into a fv,
         # the stacked descripts to learn the gmm and the loaded file tracker to
         # write the labels
@@ -447,9 +453,23 @@ if __name__=='__main__':
         train_mat_descripts, train_descripts, train_loaded_paths = network.forward_pass(train_data, pics_to_load)
         print("Complete! \n")
 
+        stoptrain = timeit.default_timer()
+
+        print("Time for Loading and Propagating training for fold is {}".format(stoptrain - start))
+
+        starttest = timeit.default_timer()
+
         print("\n-> Loading/propagating test pics through the CNN...\n")
         test_mat_descripts, test_descripts, test_loaded_paths = network.forward_pass(test_data, pics_to_load)
         print("-> Complete! \n")
+
+        stoptest = timeit.default_timer()
+
+        print("Time for Loading and Propagating testing for fold is {}".format(stoptest - start))
+
+        print("\nTime for Loading and Propagating operation is {}".format(stoptest - starttest))
+
+        startGMM = timeit.default_timer()
 
         train_loaded_labels = []
         for i in range(len(train_loaded_paths)):
@@ -463,6 +483,14 @@ if __name__=='__main__':
         print("-> Dictionary creation through GMM...")
         network.generate_GMM(train_descripts, N)
         print("-> ...completed! \n")
+
+        stopGMM = timeit.default_timer()
+
+        print("Time for Loading and Propagating testing for fold is {}".format(stopGMM - start))
+
+        print("\nTime for Loading and Propagating operation is {}".format(stopGMM - startGMM))
+
+        startFV = timeit.default_timer()
 
         print("-> Computing training FV")
         train_fv = []
@@ -480,6 +508,14 @@ if __name__=='__main__':
         test_fv = np.stack(test_fv)
         print("-> Done! \n")
 
+        stopFV = timeit.default_timer()
+
+        print("Time for Loading and Propagating testing for fold is {}".format(stopFV - start))
+
+        print("\nTime for Loading and Propagating operation is {}".format(stopFV - startFV))
+
+        startSVM = timeit.default_timer()
+
         #SVM classify
         import sklearn.svm
         print("-> Creating the classifier:")
@@ -492,6 +528,12 @@ if __name__=='__main__':
         clf.fit(train_fv,train_loaded_labels)
         print("-> Completed!")
         results = clf.predict(test_fv)
+
+        stopSVM = timeit.default_timer()
+
+        print("Time for Loading and Propagating testing for fold is {}".format(stopSVM - start))
+
+        print("\nTime for Loading and Propagating operation is {}".format(stopFV - stopSVM))
 
         #%%
         #Saving the workspace
@@ -532,6 +574,19 @@ print("#################################################")
 print("#################################################")
 print("#                 ALL DONE                      #")
 print("#################################################")
+
+print("#################################################")
+print("#            SHUTTING DOWN IN 5 SECONDS         #")
+print("#################################################")
+
+time.sleep(5)
+
+try:
+    os.system('shutdown -s')
+except NameError:
+    print('Oops you are not using windows\n')
+    raise
+
 
 #%%
 
