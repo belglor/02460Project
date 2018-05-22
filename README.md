@@ -1,7 +1,7 @@
 # 02460 Project
 Advanced Machine Learning project
 
-By <Jesper Hybel>, <Søren Jensen>, <Lorenzo Belgrano> and Mirza Hasanbasic
+By Jesper Hybel, Søren Jensen, Lorenzo Belgrano and Mirza Hasanbasic
 
 Table of Contents
 =================
