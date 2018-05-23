@@ -411,19 +411,10 @@ if __name__=='__main__':
     current_fold = 0
     max_folds=10
 
-    # SELECT HERE WHICH FOLDS YOU WANT TO RUN, IN ASCENDING ORDER (due to zero-indent, from 0 to 9)
-    # FOLD 0: MIRZA to_do_folds = [0, 1, 2]
-    # FOLD 1: MIRZA
-    # FOLD 2: MIRZA
-    # FOLD 3: LORENZO to_do_folds = [3, 4]
-    # FOLD 4: LORENZO
-    # FOLD 5: JESPER to_do_folds = [5, 6]
-    # FOLD 6: JESPER
-    # FOLD 7: SOREN to_do_folds = [7, 8, 9]
-    # FOLD 8: SOREN
-    # FOLD 9: SOREN
 
-    to_do_folds = [0]
+    to_do_folds = [7,8]
+
+
     for train, test in kf.split(files, file_labels):
         # LOOP OVER LESS FOLDS?
         if(not (current_fold in to_do_folds)):
@@ -434,7 +425,7 @@ if __name__=='__main__':
         print("#                 NEXT FOLD, "+str(current_fold)+"                  #")
         print("#################################################")
         print("#################################################")
-        print("#                 TIME is {}#".format(time.ctime))
+        print("#                 TIME is {}#".format(time.ctime()))
         print("#################################################")
 
         start = timeit.default_timer()
