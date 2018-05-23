@@ -56,6 +56,10 @@ From approx line 410-415 you can state to load all pics then set `pics_to_load =
 
 To install the matlab-python engine, please visit this link, by clicking [here](https://se.mathworks.com/help/matlab/matlab-engine-for-python.html)
 
+### MCG
+
+Install this package for the MCG: https://github.com/jponttuset/mcg
+
 # How to use git
 
 [Link about branching](http://nvie.com/posts/a-successful-git-branching-model/)
